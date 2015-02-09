@@ -183,34 +183,47 @@ int main (int argc, char** argv)
   // Skip this 2D example if libMesh was compiled as 1D-only.
   libmesh_example_requires(2 <= LIBMESH_DIM, "2D support");
 
+  /**
+   * Quick hack to demonstrate problem - DOES NOT work properly with --read_solution
+   * The code path below reorders operations:
+   * 1) skip_partitioning
+   * 2) uniform refinement
+   * 3) build equation systems
+   *
+   * Crashes with the following command line (only fails on 4 or more procs):
+   * mpiexec -n 4 ./example-dbg  -n_timesteps 25 -n_refinements 1 -output_freq 10 -init_timestep 0
+   */
+
   // Create a new mesh on the default MPI communicator.
   // We still need some work on automatic parallel restarts with
   // ParallelMesh
   SerialMesh mesh(init.comm());
 
+  MeshRefinement mesh_refinement (mesh);
+
+  // Read the mesh from file.
+  mesh.read ("mesh.xda");
+
+  // Again do a search on the command line for an argument
+  unsigned int n_refinements = 5;
+  if(command_line.search("-n_refinements"))
+    n_refinements = command_line.next(0);
+
+  mesh.skip_partitioning(true);
+
+  // Uniformly refine the mesh 5 times
+  if(!read_solution)
+    mesh_refinement.uniformly_refine (n_refinements);
+
+  // Print information about the mesh to the screen.
+  mesh.print_info();
+
   // Create an equation systems object.
   EquationSystems equation_systems (mesh);
-  MeshRefinement mesh_refinement (mesh);
 
   // First we process the case where we do not read in the solution
   if(!read_solution)
     {
-      // Read the mesh from file.
-      mesh.read ("mesh.xda");
-
-      // Again do a search on the command line for an argument
-      unsigned int n_refinements = 5;
-      if(command_line.search("-n_refinements"))
-        n_refinements = command_line.next(0);
-
-      // Uniformly refine the mesh 5 times
-      if(!read_solution)
-        mesh_refinement.uniformly_refine (n_refinements);
-
-      // Print information about the mesh to the screen.
-      mesh.print_info();
-
-
       // Declare the system and its variables.
       // Begin by creating a transient system
       // named "Convection-Diffusion".
@@ -405,6 +418,9 @@ int main (int argc, char** argv)
               // reinitialization is projecting the \p solution,
               // \p old_solution, etc... vectors from the old mesh to
               // the current one.
+
+              mesh.print_info();
+
               equation_systems.reinit ();
             }
         }
